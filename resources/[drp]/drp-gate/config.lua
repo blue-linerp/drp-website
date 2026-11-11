@@ -32,11 +32,10 @@ Config.WebsiteUrl = Config.ApiUrl
 Config.CardColors = { title = 'default', position = 'attention', priority = 'accent', muted = 'default' }
 
 -- Optional: report each player's Qbox/QBCore characters to their website profile.
--- Requires oxmysql. Reads the `players` table (citizenid, charinfo, money, job, gang, last_updated)
--- for the profile's Characters section; the active character comes from qbx_core / qb-core.
+-- Uses Qbox SearchPlayers and live PlayerData, or oxmysql with qb-core.
 Config.ReportCharacters = true
 -- How often (ms) online players' characters (money, job) are re-sent to the website.
-Config.CharacterRefreshMs = 5 * 60 * 1000
+Config.CharacterRefreshMs = 60 * 1000
 
 -- Messages -------------------------------------------------------------------
 Config.Messages = {

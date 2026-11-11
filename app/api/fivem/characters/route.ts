@@ -33,6 +33,7 @@ const character = z.object({
 const schema = z.object({
   license: z.string().min(5).max(80),
   characters: z.array(character).max(20),
+  activeCitizenId: z.string().min(1).max(40).nullish(),
 });
 
 function toDate(v: number | string | null | undefined) {
@@ -43,7 +44,7 @@ function toDate(v: number | string | null | undefined) {
 
 /**
  * The gate resource reports a player's Qbox/QBCore characters (from the `players` table).
- * Characters are upserted by citizenid; ones no longer in the game (deleted) are removed.
+ * Characters are upserted by citizenid. An incomplete report must never delete characters.
  * Playtime and last-played are tracked separately from heartbeats and are never overwritten here.
  */
 export const POST = route(async (req) => {
@@ -54,12 +55,17 @@ export const POST = route(async (req) => {
   if (!user) return NextResponse.json({ ok: true, updated: 0, note: "No website account linked to this licence yet" });
 
   const ids = body.characters.map((c) => c.citizenid);
+  if (new Set(ids).size !== ids.length) return NextResponse.json({ error: "Duplicate character ID" }, { status: 400 });
+  const owned = await db.character.findMany({ where: { citizenid: { in: ids } }, select: { citizenid: true, userId: true, lastPlayedAt: true } });
+  if (owned.some((c) => c.userId !== user.id)) return NextResponse.json({ error: "Character belongs to another account" }, { status: 409 });
+  const existing = new Map(owned.map((c) => [c.citizenid, c]));
   await db.$transaction([
     ...body.characters.map(({ lastUpdated, ...c }) => {
       const data = { ...c, firstname: c.firstname || "Unknown", lastname: c.lastname || "", gameUpdatedAt: toDate(lastUpdated), userId: user.id };
-      return db.character.upsert({ where: { citizenid: c.citizenid }, create: data, update: data });
+      const previous = existing.get(c.citizenid)?.lastPlayedAt;
+      const lastPlayedAt = c.citizenid === body.activeCitizenId && (!previous || Date.now() - previous.getTime() > 180_000) ? new Date() : undefined;
+      return db.character.upsert({ where: { citizenid: c.citizenid, userId: user.id }, create: { ...data, lastPlayedAt }, update: { ...data, lastPlayedAt } });
     }),
-    db.character.deleteMany({ where: { userId: user.id, citizenid: { notIn: ids } } }),
   ]);
   return NextResponse.json({ ok: true, updated: ids.length });
 });

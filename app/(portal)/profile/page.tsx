@@ -19,6 +19,7 @@ import { CopyConnect } from "@/components/profile/copy-connect";
 import { AppHistory, type HistoryApp } from "@/components/profile/app-history";
 import { LinkAction } from "@/components/profile/link-action";
 import { CharacterSection } from "@/components/profile/character-cards";
+import { AutoRefresh } from "@/components/admin/auto-refresh";
 
 export const metadata: Metadata = { title: "My profile", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -361,6 +362,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
       </div>
 
       <div className="mt-16">
+        <AutoRefresh ms={30_000} />
         <CharacterSection characters={characters} />
       </div>
 

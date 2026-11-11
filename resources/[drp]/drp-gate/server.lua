@@ -48,17 +48,18 @@ end
 -- Identifiers
 --------------------------------------------------------------------------------
 local function identifiers(src)
-    local ids = { license = nil, discord = nil, steam = nil, fivem = nil, ip = nil }
+    local ids = { license = nil, license2 = nil, discord = nil, steam = nil, fivem = nil, ip = nil }
     for _, id in ipairs(GetPlayerIdentifiers(src)) do
         local kind = id:match('^(%w+):')
         if kind == 'license' then ids.license = id
-        elseif kind == 'license2' and not ids.license then ids.license = 'license:' .. id:sub(10)
+        elseif kind == 'license2' then ids.license2 = id
         elseif kind == 'discord' then ids.discord = id:sub(9)
         elseif kind == 'steam' then ids.steam = id
         elseif kind == 'fivem' then ids.fivem = id
         elseif kind == 'ip' then ids.ip = id:sub(4)
         end
     end
+    if not ids.license and ids.license2 then ids.license = 'license:' .. ids.license2:sub(10) end
     return ids
 end
 
@@ -435,47 +436,97 @@ local function toCharacter(r)
     }
 end
 
---- Reads every character on a licence from the `players` table and sends them to the website.
---- Qbox stores `license2:` when available, so both forms are matched.
-local function reportCharactersFor(license)
-    if not Config.ReportCharacters or GetResourceState('oxmysql') ~= 'started' or not license then return end
-    local raw = license:sub(9)
-    local params = { 'license:' .. raw, 'license2:' .. raw }
-    local function send(rows)
-        if not rows then return end
-        local chars = {}
-        for _, r in ipairs(rows) do chars[#chars + 1] = toCharacter(r) end
-        api('POST', '/api/fivem/characters', { license = license, characters = chars }, 10000, function(status)
-            if status ~= 200 then log('character report failed', status, license) end
+-- Only one report per licence is in flight: an older HTTP response cannot overwrite a newer snapshot.
+local reporting, pending = {}, {}
+local function reportCharactersFor(src)
+    if not Config.ReportCharacters or not GetPlayerName(src) then return end
+    local ids = identifiers(src)
+    if not ids.license then return end
+    if reporting[ids.license] then pending[ids.license] = src return end
+    reporting[ids.license] = true
+
+    CreateThread(function()
+        local chars, seen = {}, {}
+        local active = activeCitizenId(src)
+        local function add(data)
+            if data and data.citizenid and not seen[data.citizenid] then
+                seen[data.citizenid] = true
+                chars[#chars + 1] = toCharacter(data)
+            end
+        end
+
+        local ok, err = pcall(function()
+            if GetResourceState('qbx_core') == 'started' then
+                -- SearchPlayers returns current PlayerData for the online character and decoded
+                -- offline PlayerData for the rest. license and license2 are distinct identifiers.
+                for _, identifier in ipairs({ ids.license, ids.license2 or ids.license }) do
+                    local found = exports.qbx_core:SearchPlayers({ license = identifier })
+                    assert(type(found) == 'table', 'Qbox character search failed')
+                    for _, player in pairs(found) do add(player.PlayerData) end
+                end
+                local player = exports.qbx_core:GetPlayer(tonumber(src))
+                if player then add(player.PlayerData) end
+            elseif GetResourceState('qb-core') == 'started' and GetResourceState('oxmysql') == 'started' then
+                local rows = exports.oxmysql:query_async('SELECT citizenid, charinfo, money, job, gang FROM players WHERE license = ? OR license = ?', { ids.license, ids.license2 or ids.license })
+                assert(type(rows) == 'table', 'character database query failed')
+                local core = exports['qb-core']:GetCoreObject()
+                local player = core.Functions.GetPlayer(tonumber(src))
+                if player then add(player.PlayerData) end
+                for _, row in ipairs(rows) do add(row) end
+            else
+                error('qbx_core or qb-core with oxmysql is not running')
+            end
         end)
-    end
-    exports.oxmysql:query('SELECT citizenid, charinfo, money, job, gang, last_updated FROM players WHERE license = ? OR license = ?', params, function(rows)
-        if rows then return send(rows) end
-        -- Older schemas without last_updated
-        exports.oxmysql:query('SELECT citizenid, charinfo, money, job, gang FROM players WHERE license = ? OR license = ?', params, send)
+
+        if not ok then
+            print(('[drp-gate] character lookup failed: %s'):format(tostring(err)))
+        elseif #chars > 0 then
+            local status, response = apiAwait('POST', '/api/fivem/characters', {
+                license = ids.license, characters = chars, activeCitizenId = active,
+            }, 10000)
+            if status ~= 200 or not response or response.updated == 0 then
+                print(('[drp-gate] character sync failed or account not linked (HTTP %s): %s'):format(status, response and (response.error or response.note or 'unknown error') or 'no response'))
+            else
+                log(('synced %d characters'):format(response.updated))
+            end
+        end
+        reporting[ids.license] = nil
+        local nextSrc = pending[ids.license]
+        pending[ids.license] = nil
+        if nextSrc and GetPlayerName(nextSrc) then reportCharactersFor(nextSrc) end
     end)
 end
 
--- A minute after joining (character selected and loaded by then).
-AddEventHandler('playerJoining', function()
+-- Qbox emits this once the character is loaded. Also handle QB's server-side PlayerLoaded event.
+RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()
     local src = source
-    SetTimeout(60000, function()
-        if GetPlayerName(src) then reportCharactersFor(identifiers(src).license) end
+    SetTimeout(2000, function() reportCharactersFor(src) end)
+end)
+AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
+    local src = player and player.PlayerData and player.PlayerData.source
+    if src then SetTimeout(2000, function() reportCharactersFor(src) end) end
+end)
+
+-- Changes are debounced so frequent money updates do not flood the website.
+local refreshScheduled = {}
+local function scheduleCharacterRefresh(src)
+    if not src or refreshScheduled[src] then return end
+    refreshScheduled[src] = true
+    SetTimeout(5000, function()
+        refreshScheduled[src] = nil
+        reportCharactersFor(src)
     end)
-end)
+end
+AddEventHandler('QBCore:Server:OnMoneyChange', scheduleCharacterRefresh)
+AddEventHandler('QBCore:Server:OnJobUpdate', scheduleCharacterRefresh)
+AddEventHandler('QBCore:Server:OnGangUpdate', scheduleCharacterRefresh)
+AddEventHandler('QBCore:Server:SetDuty', scheduleCharacterRefresh)
 
--- After leaving: the framework saves on drop, so report the final money/job shortly after.
-AddEventHandler('playerDropped', function()
-    local license = identifiers(source).license
-    if license then SetTimeout(8000, function() reportCharactersFor(license) end) end
-end)
-
--- Keep online players' money/job fresh on the website.
 CreateThread(function()
     while true do
-        Wait(Config.CharacterRefreshMs or 5 * 60 * 1000)
+        Wait(Config.CharacterRefreshMs or 60000)
         for _, p in ipairs(GetPlayers()) do
-            reportCharactersFor(identifiers(p).license)
+            reportCharactersFor(tonumber(p))
             Wait(250)
         end
     end

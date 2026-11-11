@@ -46,10 +46,11 @@ export const POST = route(async (req) => {
   if (active.length) {
     const chars = await db.character.findMany({
       where: { citizenid: { in: active.map((p) => p.citizenid!) } },
-      select: { id: true, lastPlayedAt: true },
+      select: { id: true, citizenid: true, lastPlayedAt: true, user: { select: { fivemLicense: true } } },
     });
     await Promise.all(
       chars.map((c) => {
+        if (!active.some((p) => p.citizenid === c.citizenid && p.license === c.user.fivemLicense)) return null;
         const last = c.lastPlayedAt?.getTime() ?? 0;
         const delta = now - last;
         if (!last || delta > GAP) return db.character.update({ where: { id: c.id }, data: { lastPlayedAt: new Date(now) } });
