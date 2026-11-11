@@ -34,6 +34,8 @@ Config.CardColors = { title = 'default', position = 'attention', priority = 'acc
 -- Optional: report each player's Qbox/QBCore characters to their website profile.
 -- Uses Qbox SearchPlayers and live PlayerData, or oxmysql with qb-core.
 Config.ReportCharacters = true
+-- Reads the saved per-character time from ryn_multichar_metadata (seconds).
+Config.CharacterPlaytimeSource = 'ryn-multichar'
 -- How often (ms) online players' characters (money, job) are re-sent to the website.
 Config.CharacterRefreshMs = 60 * 1000
 

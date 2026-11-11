@@ -474,10 +474,14 @@ local function saveDeletedCharacters()
     SetResourceKvp('drp_gate_deleted_characters', json.encode(deletedCharacters))
 end
 
-AddEventHandler('qbx_core:server:characterDeleted', function(citizenid)
+local function queueDeletedCharacter(citizenid)
     if type(citizenid) ~= 'string' or citizenid == '' then return end
     deletedCharacters[citizenid] = true
     saveDeletedCharacters()
+end
+AddEventHandler('qbx_core:server:characterDeleted', queueDeletedCharacter)
+AddEventHandler('ryn-multichar:server:characterDeleted', function(_, citizenid)
+    queueDeletedCharacter(citizenid)
 end)
 
 CreateThread(function()
@@ -546,6 +550,35 @@ local function reportCharactersFor(src)
                 if deletedCharacters[chars[i].citizenid] then table.remove(chars, i) end
             end
         end
+        if ok and GetResourceState('oxmysql') == 'started' then
+            -- Reconcile older deletions too. A missing character is removed only after a
+            -- successful lookup by citizenid across the entire game database.
+            local status, known = apiAwait('POST', '/api/fivem/characters/known', { license = ids.license }, 10000)
+            if status == 200 and known and type(known.characters) == 'table' then
+                for _, citizenid in ipairs(known.characters) do
+                    if not seen[citizenid] and not deletedCharacters[citizenid] then
+                        local queryOk, rows = pcall(function()
+                            return exports.oxmysql:query_async('SELECT citizenid FROM players WHERE citizenid = ? LIMIT 1', { citizenid })
+                        end)
+                        if queryOk and type(rows) == 'table' and #rows == 0 then
+                            queueDeletedCharacter(citizenid)
+                        elseif not queryOk or type(rows) ~= 'table' then
+                            print('[drp-gate] Could not verify a character deletion; keeping the website record')
+                        end
+                    end
+                end
+            end
+            if (Config.CharacterPlaytimeSource or 'ryn-multichar') == 'ryn-multichar' then
+                for _, char in ipairs(chars) do
+                    local timeOk, rows = pcall(function()
+                        return exports.oxmysql:query_async('SELECT playtime FROM ryn_multichar_metadata WHERE character_id = ? LIMIT 1', { char.citizenid })
+                    end)
+                    if timeOk and type(rows) == 'table' and rows[1] and tonumber(rows[1].playtime) then
+                        char.playtimeMinutes = math.max(0, math.floor(tonumber(rows[1].playtime) / 60))
+                    end
+                end
+            end
+        end
         if ok and #chars > 0 then
             local status, response = apiAwait('POST', '/api/fivem/characters', {
                 license = ids.license, characters = chars, activeCitizenId = active,
@@ -562,6 +595,12 @@ local function reportCharactersFor(src)
         if nextSrc and GetPlayerName(nextSrc) then reportCharactersFor(nextSrc) end
     end)
 end
+
+-- Reconcile even when the player stays at character selection or has no characters left.
+AddEventHandler('playerJoining', function()
+    local src = source
+    SetTimeout(10000, function() reportCharactersFor(src) end)
+end)
 
 -- Qbox emits this once the character is loaded. Also handle QB's server-side PlayerLoaded event.
 RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()

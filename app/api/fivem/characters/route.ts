@@ -26,6 +26,7 @@ const character = z.object({
   gangGrade: str(80),
   cash: money.default(0),
   bank: money.default(0),
+  playtimeMinutes: z.number().int().min(0).max(2147483647).optional(),
   /** players.last_updated, as epoch seconds or an ISO string */
   lastUpdated: z.union([z.number(), z.string()]).nullish(),
 });
@@ -56,15 +57,17 @@ export const POST = route(async (req) => {
 
   const ids = body.characters.map((c) => c.citizenid);
   if (new Set(ids).size !== ids.length) return NextResponse.json({ error: "Duplicate character ID" }, { status: 400 });
-  const owned = await db.character.findMany({ where: { citizenid: { in: ids } }, select: { citizenid: true, userId: true, lastPlayedAt: true } });
+  const owned = await db.character.findMany({ where: { citizenid: { in: ids } }, select: { citizenid: true, userId: true, lastPlayedAt: true, playtimeMinutes: true } });
   if (owned.some((c) => c.userId !== user.id)) return NextResponse.json({ error: "Character belongs to another account" }, { status: 409 });
   const existing = new Map(owned.map((c) => [c.citizenid, c]));
   await db.$transaction([
-    ...body.characters.map(({ lastUpdated, ...c }) => {
+    ...body.characters.flatMap(({ lastUpdated, playtimeMinutes, ...c }) => {
       const data = { ...c, firstname: c.firstname || "Unknown", lastname: c.lastname || "", gameUpdatedAt: toDate(lastUpdated), userId: user.id };
       const previous = existing.get(c.citizenid)?.lastPlayedAt;
       const lastPlayedAt = c.citizenid === body.activeCitizenId && (!previous || Date.now() - previous.getTime() > 180_000) ? new Date() : undefined;
-      return db.character.upsert({ where: { citizenid: c.citizenid, userId: user.id }, create: { ...data, lastPlayedAt }, update: { ...data, lastPlayedAt } });
+      const upsert = db.character.upsert({ where: { citizenid: c.citizenid, userId: user.id }, create: { ...data, lastPlayedAt, playtimeMinutes }, update: { ...data, lastPlayedAt } });
+      // A heartbeat may increment playtime concurrently; never replace a newer total.
+      return playtimeMinutes === undefined ? [upsert] : [upsert, db.character.updateMany({ where: { citizenid: c.citizenid, userId: user.id, playtimeMinutes: { lt: playtimeMinutes } }, data: { playtimeMinutes } })];
     }),
   ]);
   return NextResponse.json({ ok: true, updated: ids.length });
