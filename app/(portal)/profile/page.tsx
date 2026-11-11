@@ -20,6 +20,8 @@ import { AppHistory, type HistoryApp } from "@/components/profile/app-history";
 import { LinkAction } from "@/components/profile/link-action";
 import { CharacterSection } from "@/components/profile/character-cards";
 import { AutoRefresh } from "@/components/admin/auto-refresh";
+import { getQueueSnapshot } from "@/lib/fivem";
+import { activeCharacterIds } from "@/lib/character-presence";
 
 export const metadata: Metadata = { title: "My profile", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -30,7 +32,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
   const user = await getCurrentUser();
   if (!user) redirect("/signin?callbackUrl=/profile");
 
-  const [apps, bans, warnings, ban, { home }, deptTypes, characters] = await Promise.all([
+  const [apps, bans, warnings, ban, { home }, deptTypes, characters, snapshot] = await Promise.all([
     db.application.findMany({ where: { userId: user.id }, include: { type: { select: { title: true, grantsWhitelist: true } } }, orderBy: { submittedAt: "desc" } }),
     db.ban.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" } }),
     db.warning.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" } }),
@@ -38,6 +40,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
     getPublicSettings(),
     db.applicationType.findMany({ where: { department: { not: null }, grantRoleId: { not: null } }, select: { title: true, grantRoleId: true } }),
     db.character.findMany({ where: { userId: user.id }, orderBy: [{ lastPlayedAt: { sort: "desc", nulls: "last" } }, { createdAt: "asc" }] }),
+    getQueueSnapshot(),
   ]);
 
   const priority = priorityFor(user);
@@ -362,8 +365,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
       </div>
 
       <div className="mt-16">
-        <AutoRefresh ms={30_000} />
-        <CharacterSection characters={characters} />
+        <AutoRefresh ms={10_000} />
+        <CharacterSection characters={characters} activeCitizenIds={activeCharacterIds(snapshot, user.fivemLicense)} />
       </div>
 
       <section id="settings" aria-label="Profile settings" className="mt-16 scroll-mt-28">

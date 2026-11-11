@@ -17,8 +17,6 @@ export function timeAgo(d: Date | null) {
   return formatDate(d);
 }
 
-const ONLINE_MS = 2.5 * 60 * 1000;
-
 function Stat({ icon: Icon, label, value, accent }: { icon: typeof Clock; label: string; value: string; accent?: boolean }) {
   return (
     <div className="rounded-[6px] border border-white/[0.04] bg-white/[0.06] px-3 py-2.5">
@@ -32,10 +30,9 @@ function Stat({ icon: Icon, label, value, accent }: { icon: typeof Clock; label:
   );
 }
 
-export function CharacterCard({ c, showMoney = true }: { c: Character; showMoney?: boolean }) {
+export function CharacterCard({ c, showMoney = true, online = false }: { c: Character; showMoney?: boolean; online?: boolean }) {
   const name = `${c.firstname} ${c.lastname}`.trim() || "Unknown";
   const initials = `${c.firstname[0] ?? ""}${c.lastname[0] ?? ""}`.toUpperCase() || "?";
-  const online = !!c.lastPlayedAt && Date.now() - c.lastPlayedAt.getTime() < ONLINE_MS;
 
   return (
     <article className="plate flex flex-col p-5 transition-[outline-color] hover:[outline-color:rgb(var(--accent-rgb))]">
@@ -110,7 +107,7 @@ export function CharacterCard({ c, showMoney = true }: { c: Character; showMoney
 }
 
 /** Characters section with a money/playtime summary across all characters. */
-export function CharacterSection({ characters, showMoney = true }: { characters: Character[]; showMoney?: boolean }) {
+export function CharacterSection({ characters, showMoney = true, activeCitizenIds = [] }: { characters: Character[]; showMoney?: boolean; activeCitizenIds?: string[] }) {
   const totalCash = characters.reduce((n, c) => n + c.cash, 0);
   const totalBank = characters.reduce((n, c) => n + c.bank, 0);
   const totalTime = characters.reduce((n, c) => n + c.playtimeMinutes, 0);
@@ -151,7 +148,7 @@ export function CharacterSection({ characters, showMoney = true }: { characters:
         <>
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {characters.map((c) => (
-              <CharacterCard key={c.id} c={c} showMoney={showMoney} />
+              <CharacterCard key={c.id} c={c} showMoney={showMoney} online={activeCitizenIds.includes(c.citizenid)} />
             ))}
           </div>
           {updated && <p className="mt-3 text-xs text-white/40">Money and jobs sync from the city every few minutes while you play. Last update {timeAgo(updated).toLowerCase()}.</p>}

@@ -338,12 +338,16 @@ local function activeCitizenId(src)
     return ok and cid or nil
 end
 
+-- An unloading character can remain in framework memory briefly. Hide it until the next load.
+local characterUnloaded = {}
 local function heartbeat()
     local players = {}
     for _, p in ipairs(GetPlayers()) do
         local ids = identifiers(p)
         if ids.license then
-            players[#players + 1] = { license = ids.license, discordId = ids.discord, name = GetPlayerName(p), citizenid = activeCitizenId(p) }
+            if characterUnloaded[tostring(p)] ~= 'dropped' then
+                players[#players + 1] = { license = ids.license, discordId = ids.discord, name = GetPlayerName(p), citizenid = not characterUnloaded[tostring(p)] and activeCitizenId(p) or nil }
+            end
         end
     end
     local q = {}
@@ -380,6 +384,32 @@ local function heartbeat()
     end
 end
 
+-- Serialize snapshots so a slower earlier request cannot restore an old online status.
+local heartbeatRunning, heartbeatPending = false, false
+local function scheduleHeartbeat()
+    if heartbeatRunning then heartbeatPending = true return end
+    heartbeatRunning = true
+    CreateThread(function()
+        repeat
+            heartbeatPending = false
+            local ok, err = pcall(heartbeat)
+            if not ok then print(('[drp-gate] heartbeat failed: %s'):format(tostring(err))) end
+        until not heartbeatPending
+        heartbeatRunning = false
+    end)
+end
+
+AddEventHandler('playerJoining', function() characterUnloaded[tostring(source)] = nil end)
+AddEventHandler('playerDropped', function()
+    characterUnloaded[tostring(source)] = 'dropped'
+    scheduleHeartbeat()
+end)
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+    if not src then return end
+    characterUnloaded[tostring(src)] = true
+    scheduleHeartbeat()
+end)
+
 CreateThread(function()
     if Config.ApiSecret == '' then
         print('^1[drp-gate] drp_gate_secret is not set. Every connection will fail. Add `set drp_gate_secret "..."` to server.cfg.^0')
@@ -389,7 +419,7 @@ CreateThread(function()
     local lastCache = now()
     while true do
         Wait(Config.HeartbeatMs)
-        heartbeat()
+        scheduleHeartbeat()
         if now() - lastCache >= Config.CacheRefreshMs then
             lastCache = now()
             refreshCache()
@@ -500,11 +530,17 @@ end
 -- Qbox emits this once the character is loaded. Also handle QB's server-side PlayerLoaded event.
 RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()
     local src = source
+    characterUnloaded[tostring(src)] = nil
+    scheduleHeartbeat()
     SetTimeout(2000, function() reportCharactersFor(src) end)
 end)
 AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
     local src = player and player.PlayerData and player.PlayerData.source
-    if src then SetTimeout(2000, function() reportCharactersFor(src) end) end
+    if src then
+        characterUnloaded[tostring(src)] = nil
+        scheduleHeartbeat()
+        SetTimeout(2000, function() reportCharactersFor(src) end)
+    end
 end)
 
 -- Changes are debounced so frequent money updates do not flood the website.

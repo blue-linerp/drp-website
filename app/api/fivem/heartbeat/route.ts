@@ -17,11 +17,14 @@ const player = z.object({
   /** The character the player is currently on (Qbox/QBCore citizenid), if loaded. */
   citizenid: z.string().max(40).nullish(),
 });
+// FiveM's Lua JSON encoder may represent an empty table as {} instead of [].
+const emptyTableToArray = (value: unknown) =>
+  value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0 ? [] : value;
 const schema = z.object({
-  players: z.array(player).max(2048),
-  queue: z
+  players: z.preprocess(emptyTableToArray, z.array(player).max(2048)),
+  queue: z.preprocess(emptyTableToArray, z
     .array(player.extend({ priority: z.number().int(), joinedAt: z.number(), tier: z.string().max(40).nullish() }))
-    .max(2048),
+    .max(2048)),
   maxClients: z.number().int().min(0).max(2048).optional(),
 });
 

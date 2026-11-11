@@ -21,7 +21,7 @@ export interface QueueSnapshotEntry {
 }
 export interface QueueSnapshot {
   updatedAt: number;
-  players: { license: string; discordId?: string | null; name?: string | null }[];
+  players: { license: string; discordId?: string | null; name?: string | null; citizenid?: string | null }[];
   queue: QueueSnapshotEntry[];
   maxClients?: number;
 }
