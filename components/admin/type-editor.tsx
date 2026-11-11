@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/misc";
 import { APP_ICONS, AppIcon } from "@/components/apps/icon";
 import { QUESTION_TYPES, QUESTION_TYPE_LABEL, type Question, type QuestionType } from "@/lib/questions";
+import { APPLICATION_TEMPLATES, type ApplicationTemplate } from "@/lib/application-templates";
 import { cn, slugify } from "@/lib/utils";
 import { SortableList } from "./sortable";
 import { useAction } from "./use-action";
@@ -50,6 +51,7 @@ export function TypeEditor({ initial }: { initial: TypeForm }) {
   const [f, setF] = useState({ ...initial, opensAt: "", closesAt: "" });
   const [qs, setQs] = useState<Q[]>(() => initial.questions.map(withKey));
   const [openQ, setOpenQ] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
   useEffect(() => {
     setF((s) => ({ ...s, opensAt: isoToLocal(initial.opensAt), closesAt: isoToLocal(initial.closesAt) }));
@@ -57,6 +59,22 @@ export function TypeEditor({ initial }: { initial: TypeForm }) {
 
   const set = <K extends keyof TypeForm>(k: K, v: TypeForm[K]) => setF((s) => ({ ...s, [k]: v }));
   const setQ = (key: string, patch: Partial<Question>) => setQs((list) => list.map((q) => (q._key === key ? { ...q, ...patch } : q)));
+
+  const applyTemplate = (template: ApplicationTemplate) => {
+    const draftChanged = selectedTemplate || f.title !== initial.title || f.slug !== initial.slug || f.description !== initial.description ||
+      f.category !== initial.category || f.department !== initial.department || f.icon !== initial.icon ||
+      f.requiresWhitelist !== initial.requiresWhitelist || f.grantsWhitelist !== initial.grantsWhitelist ||
+      JSON.stringify(qs.map(({ _key, ...q }) => q)) !== JSON.stringify(initial.questions);
+    if (draftChanged && !window.confirm("Replace the current draft details and questions with this template?")) return;
+    setF((current) => ({
+      ...current, slug: template.slug, title: template.title, category: template.category,
+      department: template.department, description: template.description, icon: template.icon,
+      requiresWhitelist: template.requiresWhitelist, grantsWhitelist: template.grantsWhitelist,
+    }));
+    setQs(template.questions.map((q) => withKey({ ...q, options: q.options ? [...q.options] : undefined })));
+    setOpenQ(null);
+    setSelectedTemplate(template.id);
+  };
 
   const save = async () => {
     const body = {
@@ -107,6 +125,29 @@ export function TypeEditor({ initial }: { initial: TypeForm }) {
         {error && <span className="text-accent-text">{error}</span>}
         {ok && <span className="text-[#7ee2a8]">{ok}</span>}
       </p>
+
+      {!f.id && (
+        <Card>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="eyebrow">Start with a template</p>
+              <h2 className="mt-2 text-2xl">Build an application faster</h2>
+            </div>
+            <p className="max-w-lg text-sm text-white/50">Choose a starting point, then edit the details and questions below. New applications stay closed until you open them.</p>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {APPLICATION_TEMPLATES.map((template) => (
+              <button key={template.id} type="button" onClick={() => applyTemplate(template)} aria-pressed={selectedTemplate === template.id}
+                className={cn("rounded-lg border p-4 text-left transition-colors", selectedTemplate === template.id ? "border-accent bg-accent/10" : "border-white/10 bg-ink-800 hover:border-accent/50 hover:bg-white/[0.06]")}>
+                <AppIcon name={template.icon} size={20} className="text-accent" />
+                <span className="mt-3 block font-display text-lg font-bold text-white">{template.name}</span>
+                <span className="mt-1 block text-sm text-white/50">{template.summary}</span>
+                <span className="mt-3 block text-xs text-white/40">{template.questions.length} questions</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card>
         <h2 className="text-2xl">Details</h2>
