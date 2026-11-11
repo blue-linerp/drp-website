@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { Eye, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, LayoutTemplate, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/misc";
 import { Markdown } from "@/components/content/markdown";
 import { cn } from "@/lib/utils";
+import { ENTRY_TEMPLATES, SNIPPETS, hasTemplates, insertSnippet, type EntryTemplate, type Snippet } from "@/lib/content-templates";
 import { SortableList } from "./sortable";
 import { useAction } from "./use-action";
 
@@ -100,8 +101,20 @@ export function ContentManager({ kind, items: initial }: { kind: Kind; items: It
   const [items, setItems] = useState(initial);
   const [editing, setEditing] = useState<Item | null>(null);
   const [preview, setPreview] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const templates = hasTemplates(kind) ? ENTRY_TEMPLATES[kind] : [];
+  const snippets = hasTemplates(kind) ? SNIPPETS[kind] : [];
 
   useEffect(() => setItems(initial), [initial]);
+
+  const isDirty = (e: Item | null) => !!e && cfg.fields.some((f) => JSON.stringify(e[f.key] ?? "") !== JSON.stringify((e.id ? items.find((i) => i.id === e.id) : cfg.blank)?.[f.key] ?? ""));
+
+  const applyTemplate = (t: EntryTemplate) => {
+    if (isDirty(editing) && !window.confirm("Replace what you're editing with this template?")) return;
+    setEditing({ ...cfg.blank, ...t.values });
+    setPreview(false);
+    setShowTemplates(false);
+  };
 
   const groups = useMemo(() => {
     if (!cfg.group) return [{ name: "", items }];
@@ -136,10 +149,36 @@ export function ContentManager({ kind, items: initial }: { kind: Kind; items: It
       <div>
         <div className="flex items-center justify-between">
           <p className="text-sm text-white/50">{items.length} items · drag to reorder</p>
-          <Button size="sm" onClick={() => { setEditing({ ...cfg.blank }); setPreview(false); }}>
-            <Plus size={15} aria-hidden /> Add
-          </Button>
+          <div className="flex gap-2">
+            {templates.length > 0 && (
+              <Button size="sm" variant="secondary" onClick={() => setShowTemplates((s) => !s)} aria-expanded={showTemplates} aria-controls="content-templates">
+                <LayoutTemplate size={15} aria-hidden /> Templates
+              </Button>
+            )}
+            <Button size="sm" onClick={() => { setEditing({ ...cfg.blank }); setPreview(false); }}>
+              <Plus size={15} aria-hidden /> Add
+            </Button>
+          </div>
         </div>
+        {showTemplates && (
+          <div id="content-templates" className="item mt-3 p-4">
+            <div className="flex items-center justify-between">
+              <p className="label !mb-0">Start from a template</p>
+              <button type="button" className="p-1 text-white/45 hover:text-white" aria-label="Close templates" onClick={() => setShowTemplates(false)}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {templates.map((t) => (
+                <button key={t.id} type="button" onClick={() => applyTemplate(t)} className="rounded-lg border border-white/10 bg-ink-800 p-3 text-left transition-colors hover:border-accent/50 hover:bg-white/[0.06]">
+                  <span className="block font-semibold text-white">{t.name}</span>
+                  <span className="mt-0.5 block text-xs text-white/50">{t.summary}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-white/40">Replace anything in [square brackets]. New guides start as drafts.</p>
+          </div>
+        )}
         <p aria-live="polite" className="mt-2 min-h-5 text-sm">
           {error && <span className="text-accent-text">{error}</span>}
           {ok && <span className="text-[#7ee2a8]">{ok}</span>}
@@ -191,7 +230,7 @@ export function ContentManager({ kind, items: initial }: { kind: Kind; items: It
           </div>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {cfg.fields.map((f) => (
-              <FieldEditor key={f.key} field={f} value={editing[f.key]} preview={preview} onChange={(v) => setEditing((e) => ({ ...e!, [f.key]: v }))} />
+              <FieldEditor key={f.key} field={f} value={editing[f.key]} preview={preview} snippets={snippets} onChange={(v) => setEditing((e) => ({ ...e!, [f.key]: v }))} />
             ))}
           </div>
         </Card>
@@ -200,7 +239,22 @@ export function ContentManager({ kind, items: initial }: { kind: Kind; items: It
   );
 }
 
-function FieldEditor({ field: f, value, preview, onChange }: { field: Field; value: unknown; preview: boolean; onChange: (v: unknown) => void }) {
+function FieldEditor({ field: f, value, preview, snippets = [], onChange }: { field: Field; value: unknown; preview: boolean; snippets?: Snippet[]; onChange: (v: unknown) => void }) {
+  const area = useRef<HTMLTextAreaElement>(null);
+  const pendingCursor = useRef<number | null>(null);
+  useEffect(() => {
+    if (pendingCursor.current === null || !area.current) return;
+    area.current.focus();
+    area.current.setSelectionRange(pendingCursor.current, pendingCursor.current);
+    pendingCursor.current = null;
+  });
+  const insert = (s: Snippet) => {
+    const text = String(value ?? "");
+    const el = area.current;
+    const r = insertSnippet(text, s.markdown, el?.selectionStart ?? text.length, el?.selectionEnd ?? text.length);
+    pendingCursor.current = r.cursor;
+    onChange(r.text);
+  };
   const wide = f.type === "markdown" || f.type === "textarea" || f.type === "list" || ("wide" in f && f.wide);
   const help = f.help && <span className="mt-1 block text-xs text-white/40">{f.help}</span>;
   if (f.type === "bool")
@@ -219,7 +273,25 @@ function FieldEditor({ field: f, value, preview, onChange }: { field: Field; val
             <Markdown>{String(value ?? "")}</Markdown>
           </div>
         ) : (
-          <textarea className="input min-h-[360px] font-mono text-[13px] leading-relaxed" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />
+          <>
+            {snippets.length > 0 && (
+              <span role="toolbar" aria-label="Insert snippet" className="mb-2 flex flex-wrap gap-1.5">
+                {snippets.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    title={s.markdown}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insert(s)}
+                    className="rounded-[6px] border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/70 transition-colors hover:border-accent/50 hover:text-white"
+                  >
+                    + {s.label}
+                  </button>
+                ))}
+              </span>
+            )}
+            <textarea ref={area} className="input min-h-[360px] font-mono text-[13px] leading-relaxed" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />
+          </>
         )
       ) : f.type === "textarea" ? (
         <textarea className="input min-h-[90px]" value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />
