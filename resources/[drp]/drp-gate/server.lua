@@ -468,6 +468,37 @@ end
 
 -- Only one report per licence is in flight: an older HTTP response cannot overwrite a newer snapshot.
 local reporting, pending = {}, {}
+-- Persist confirmed deletions until the website acknowledges them, including across restarts.
+local deletedCharacters = decode(GetResourceKvpString('drp_gate_deleted_characters'))
+local function saveDeletedCharacters()
+    SetResourceKvp('drp_gate_deleted_characters', json.encode(deletedCharacters))
+end
+
+AddEventHandler('qbx_core:server:characterDeleted', function(citizenid)
+    if type(citizenid) ~= 'string' or citizenid == '' then return end
+    deletedCharacters[citizenid] = true
+    saveDeletedCharacters()
+end)
+
+CreateThread(function()
+    while true do
+        for citizenid in pairs(deletedCharacters) do
+            -- Let already-running snapshots finish before deleting, and prevent new snapshots
+            -- from reintroducing this character while its deletion is pending.
+            while next(reporting) do Wait(250) end
+            local status = apiAwait('POST', '/api/fivem/characters/deleted', { citizenid = citizenid }, 10000)
+            if status == 200 then
+                deletedCharacters[citizenid] = nil
+                saveDeletedCharacters()
+                log('character deletion synced', citizenid)
+            else
+                print(('[drp-gate] character deletion sync failed (HTTP %s); retrying'):format(status))
+            end
+        end
+        Wait(5000)
+    end
+end)
+
 local function reportCharactersFor(src)
     if not Config.ReportCharacters or not GetPlayerName(src) then return end
     local ids = identifiers(src)
@@ -479,7 +510,7 @@ local function reportCharactersFor(src)
         local chars, seen = {}, {}
         local active = activeCitizenId(src)
         local function add(data)
-            if data and data.citizenid and not seen[data.citizenid] then
+            if data and data.citizenid and not deletedCharacters[data.citizenid] and not seen[data.citizenid] then
                 seen[data.citizenid] = true
                 chars[#chars + 1] = toCharacter(data)
             end
@@ -511,6 +542,11 @@ local function reportCharactersFor(src)
         if not ok then
             print(('[drp-gate] character lookup failed: %s'):format(tostring(err)))
         elseif #chars > 0 then
+            for i = #chars, 1, -1 do
+                if deletedCharacters[chars[i].citizenid] then table.remove(chars, i) end
+            end
+        end
+        if ok and #chars > 0 then
             local status, response = apiAwait('POST', '/api/fivem/characters', {
                 license = ids.license, characters = chars, activeCitizenId = active,
             }, 10000)
