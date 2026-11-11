@@ -11,7 +11,7 @@ export interface Me {
   whitelisted: boolean;
   isStaff: boolean;
   staffLevel: string | null;
-  priority: { base: number; supporter: number; staff: number; manual: number; total: number };
+  priority: { base: number; role: number; supporter: number; staff: number; manual: number; total: number; roleLabel: string | null; reserved: boolean };
   tier: { name: string; color: string; priority: number } | null;
   ban: { reason: string; expiresAt: string | null } | null;
   license: string | null;

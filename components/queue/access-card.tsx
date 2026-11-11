@@ -128,6 +128,7 @@ export function AccessCard() {
           <dt className="col-span-2 font-digits text-xs font-semibold uppercase tracking-[0.2em] text-white/45">Queue priority</dt>
           <dd className="col-span-2 font-display text-5xl font-bold text-white">{me.priority.total}</dd>
           <dt className="text-white/50">Base</dt><dd className="text-right font-mono text-white">{me.priority.base}</dd>
+          <dt className="text-white/50">Role{me.priority.roleLabel ? ` (${me.priority.roleLabel})` : ""}</dt><dd className="text-right font-mono text-white">+{me.priority.role}</dd>
           <dt className="text-white/50">Supporter{me.tier ? ` (${me.tier.name})` : ""}</dt><dd className="text-right font-mono text-white">+{me.priority.supporter}</dd>
           <dt className="text-white/50">Staff</dt><dd className="text-right font-mono text-white">+{me.priority.staff}</dd>
           <dt className="text-white/50">Bonus</dt><dd className="text-right font-mono text-white">{me.priority.manual >= 0 ? "+" : ""}{me.priority.manual}</dd>

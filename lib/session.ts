@@ -7,7 +7,7 @@ import { db } from "./db";
 import { env } from "./env";
 import { ensureFresh } from "./sync";
 import { can, resolveAccess, type Access, type Action } from "./permissions";
-import { computePriority } from "./priority";
+import { computePriority, matchQueueRoles, type QueueRoleLike } from "./priority";
 import { ApiError } from "./api";
 
 export type CurrentUser = User & { supporterTier: SupporterTier | null; access: Access };
@@ -21,14 +21,23 @@ export function accessFor(user: Pick<User, "roleIds">): Access {
   });
 }
 
-export function priorityFor(user: User & { supporterTier: SupporterTier | null }) {
-  return computePriority({
+/**
+ * Full queue priority for a user. Pass the configured queue roles (getQueueRoles()) so the
+ * player's highest Discord queue role counts. The result also says which role matched and
+ * whether the player may use the reserved slots.
+ */
+export function priorityFor(user: User & { supporterTier: SupporterTier | null }, queueRoles: QueueRoleLike[] = []) {
+  const isStaff = accessFor(user).level !== null;
+  const match = matchQueueRoles(user.roleIds, queueRoles);
+  const breakdown = computePriority({
     supporterPriority: user.supporterTier?.priority,
     supporterUntil: user.supporterUntil,
-    isStaff: accessFor(user).level !== null,
+    isStaff,
     staffBonus: env.staffPriorityBonus,
     manualBonus: user.priorityBonus,
+    rolePriority: match.best?.priority,
   });
+  return { ...breakdown, roleLabel: match.best?.label ?? null, reserved: isStaff || match.reserved };
 }
 
 /** Signed-in user, freshly loaded from the DB (roles re-synced if older than 5 min). Cached per request. */

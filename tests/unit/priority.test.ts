@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computePriority, queuePosition, sortQueue, supporterActive } from "@/lib/priority";
+import { computePriority, matchQueueRoles, queuePosition, sortQueue, supporterActive } from "@/lib/priority";
 
 const NOW = new Date("2026-11-08T12:00:00Z");
 
 describe("computePriority", () => {
   it("is 0 for a regular player", () => {
-    expect(computePriority({ now: NOW })).toEqual({ base: 0, supporter: 0, staff: 0, manual: 0, total: 0 });
+    expect(computePriority({ now: NOW })).toEqual({ base: 0, role: 0, supporter: 0, staff: 0, manual: 0, total: 0 });
   });
 
   it.each([
@@ -35,7 +35,7 @@ describe("computePriority", () => {
 
   it("sums base + supporter + staff + manual", () => {
     const p = computePriority({ supporterPriority: 80, supporterUntil: null, isStaff: true, staffBonus: 200, manualBonus: 15, now: NOW });
-    expect(p).toEqual({ base: 0, supporter: 80, staff: 200, manual: 15, total: 295 });
+    expect(p).toEqual({ base: 0, role: 0, supporter: 80, staff: 200, manual: 15, total: 295 });
   });
 
   it("allows a negative manual bonus but never a negative total", () => {
@@ -74,5 +74,36 @@ describe("sortQueue / queuePosition", () => {
   it("returns a 1-based position or null", () => {
     expect(queuePosition(q, (x) => x.id === "b")).toBe(3);
     expect(queuePosition(q, (x) => x.id === "zzz")).toBeNull();
+  });
+});
+
+describe("queue roles", () => {
+  const roles = [
+    { discordRoleId: "1", label: "Member", priority: 10, reservedSlot: false },
+    { discordRoleId: "2", label: "Booster", priority: 50, reservedSlot: false },
+    { discordRoleId: "3", label: "Content Creator", priority: 100, reservedSlot: true },
+  ];
+
+  it("uses only the highest matching role", () => {
+    const m = matchQueueRoles(["1", "2", "999"], roles);
+    expect(m.best?.label).toBe("Booster");
+    expect(m.all.map((r) => r.label)).toEqual(["Booster", "Member"]);
+    expect(m.reserved).toBe(false);
+  });
+
+  it("flags reserved-slot roles", () => {
+    expect(matchQueueRoles(["3"], roles).reserved).toBe(true);
+  });
+
+  it("returns nothing for players without queue roles", () => {
+    const m = matchQueueRoles(["999"], roles);
+    expect(m.best).toBeNull();
+    expect(m.reserved).toBe(false);
+  });
+
+  it("adds the role priority to the total", () => {
+    const p = computePriority({ rolePriority: 100, supporterPriority: 25, supporterUntil: null, now: NOW });
+    expect(p.role).toBe(100);
+    expect(p.total).toBe(125);
   });
 });

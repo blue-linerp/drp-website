@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { parseBody, route } from "@/lib/api";
 import { bareDiscord, normId, verifyFivemRequest } from "@/lib/fivem-auth";
 import { getState, setState } from "@/lib/settings";
@@ -100,7 +101,8 @@ export const POST = route(async (req) => {
     ? await db.user.findMany({ where: { fivemLicense: { in: queue.map((q) => q.license) } }, include: { supporterTier: true } })
     : [];
   const priorities: Record<string, number> = {};
-  for (const u of queuedUsers) priorities[u.fivemLicense!] = priorityFor(u).total;
+  const queueRoles = await getQueueRoles();
+  for (const u of queuedUsers) priorities[u.fivemLicense!] = priorityFor(u, queueRoles).total;
 
   return NextResponse.json({ ok: true, kicks: kicks.map(({ license, reason }) => ({ license, reason })), drops, priorities });
 });

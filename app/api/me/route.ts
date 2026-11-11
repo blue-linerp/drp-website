@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { route } from "@/lib/api";
 import { accessFor, activeBan, priorityFor } from "@/lib/session";
 import { ensureFresh, syncMember } from "@/lib/sync";
@@ -54,7 +55,7 @@ export const GET = route(async (req) => {
         whitelisted: user.whitelisted,
         isStaff: access.level !== null,
         staffLevel: access.level,
-        priority: priorityFor(user),
+        priority: priorityFor(user, await getQueueRoles()),
         tier: user.supporterTier ? { name: user.supporterTier.name, color: user.supporterTier.color, priority: user.supporterTier.priority } : null,
         ban: ban ? { reason: ban.reason, expiresAt: ban.expiresAt?.toISOString() ?? null } : null,
         license: user.fivemLicense,

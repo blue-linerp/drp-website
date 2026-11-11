@@ -14,7 +14,8 @@ Config.CacheRefreshMs = 5 * 60 * 1000
 Config.HeartbeatMs = 30 * 1000
 
 -- Queue --------------------------------------------------------------------
--- Slots kept free for staff. Non-staff can fill at most (sv_maxclients - ReservedStaffSlots).
+-- Slots kept free for staff and for queue roles marked "Can use reserved slots" on the website
+-- (Admin → Queue → Queue roles). Everyone else can fill at most (sv_maxclients - ReservedStaffSlots).
 Config.ReservedStaffSlots = 2
 -- Players who crash (or drop out of the queue) get their place back if they reconnect within this time.
 Config.GraceMs = 3 * 60 * 1000

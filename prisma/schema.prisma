@@ -322,3 +322,17 @@ model Character {
 
   @@index([userId])
 }
+
+/// Discord role → queue priority. A player's highest matching role counts (roles don't stack).
+model QueueRole {
+  id            String   @id @default(cuid())
+  discordRoleId String   @unique
+  label         String
+  priority      Int
+  /// May fill the slots held back for staff (Config.ReservedStaffSlots in drp-gate).
+  reservedSlot  Boolean  @default(false)
+  color         String   @default("#E4080A")
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

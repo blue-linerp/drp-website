@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { site } from "@/lib/site";
 import { parseBody, route } from "@/lib/api";
 import { bareDiscord, normId, verifyFivemRequest } from "@/lib/fivem-auth";
@@ -29,6 +30,10 @@ type Result = {
   priority: number;
   tier: string | null;
   isStaff: boolean;
+  /** May use the slots drp-gate holds back for staff (staff, or a queue role with reservedSlot). */
+  reserved: boolean;
+  /** Highest queue role label, shown on the queue card. */
+  queueRole: string | null;
   banned: boolean;
   banReason: string | null;
   banExpires: string | null;
@@ -42,6 +47,8 @@ const deny = (reason: Result["reason"], message: string, extra: Partial<Result> 
   priority: 0,
   tier: null,
   isStaff: false,
+  reserved: false,
+  queueRole: null,
   banned: false,
   banReason: null,
   banExpires: null,
@@ -107,14 +114,15 @@ export const POST = route(async (req) => {
   if (!user.fivemLicense) await audit(null, "fivem.link", "User", user.id, { license, steam, fivem });
   await db.user.update({ where: { id: user.id }, data: link });
 
-  // Roles may have changed in Discord since the last sync.
-  const synced = await ensureFresh(user);
+  // Whitelist is a Discord role: re-read roles if they are more than a minute old, so a
+  // removed role locks the player out right away.
+  const synced = await ensureFresh(user, 60_000);
   user = { ...user, ...synced };
 
   if (!user.inGuild) return NextResponse.json(deny("not_in_guild", `Join our Discord to play, then reconnect. ${site.discordInvite}`));
   if (!user.whitelisted) return NextResponse.json(deny("not_whitelisted", `Not whitelisted. Apply at ${apply}`));
 
-  const prio = priorityFor(user);
+  const prio = priorityFor(user, await getQueueRoles());
   const result: Result = {
     allowed: true,
     reason: "ok",
@@ -122,6 +130,8 @@ export const POST = route(async (req) => {
     priority: prio.total,
     tier: user.supporterTier && supporterActive(user.supporterUntil) ? user.supporterTier.name : null,
     isStaff: accessFor(user).level !== null,
+    reserved: prio.reserved,
+    queueRole: prio.roleLabel,
     banned: false,
     banReason: null,
     banExpires: null,

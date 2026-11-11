@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowUpRight, BookOpen, Check, CheckCircle2, Circle, Clock, Gamepad2, Link2, Lock, ShieldAlert, ShieldCheck, UserX, X } from "lucide-react";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { activeBan, getCurrentUser, priorityFor } from "@/lib/session";
 import { LEVEL_LABEL } from "@/lib/permissions";
 import { supporterActive } from "@/lib/priority";
@@ -43,7 +44,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
     getQueueSnapshot(),
   ]);
 
-  const priority = priorityFor(user);
+  const priority = priorityFor(user, await getQueueRoles());
   const tierActive = !!user.supporterTier && supporterActive(user.supporterUntil);
   const points = [...bans, ...warnings].reduce((n, x) => n + x.points, 0);
   const departments = deptTypes.filter((t) => user.roleIds.includes(t.grantRoleId!));
@@ -325,6 +326,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: { de
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-y-1.5 text-sm">
               <dt className="text-white/50">Base</dt><dd className="text-right font-mono text-white">{priority.base}</dd>
+              <dt className="text-white/50">Role{priority.roleLabel ? ` · ${priority.roleLabel}` : ""}</dt><dd className="text-right font-mono text-white">+{priority.role}</dd>
               <dt className="text-white/50">Supporter{tierActive ? ` · ${user.supporterTier!.name}` : ""}</dt><dd className="text-right font-mono text-white">+{priority.supporter}</dd>
               <dt className="text-white/50">Staff</dt><dd className="text-right font-mono text-white">+{priority.staff}</dd>
               <dt className="text-white/50">Bonus</dt><dd className="text-right font-mono text-white">{priority.manual >= 0 ? "+" : ""}{priority.manual}</dd>

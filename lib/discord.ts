@@ -59,6 +59,13 @@ export async function getGuildMember(userId: string): Promise<GuildMember | null
   }
 }
 
+/** All roles in the guild (bot token), highest position first. Empty list when no bot is configured. */
+export async function getGuildRoles(): Promise<{ id: string; name: string; color: number; position: number; managed: boolean }[]> {
+  if (!botConfigured()) return [];
+  const roles = await call<{ id: string; name: string; color: number; position: number; managed: boolean }[]>(`/guilds/${env.guildId}/roles`);
+  return roles.filter((r) => r.id !== env.guildId).sort((a, b) => b.position - a.position);
+}
+
 /** Uses the user's OAuth token (guilds.members.read). Used at sign-in when no bot is configured. */
 export async function getOwnGuildMember(accessToken: string): Promise<GuildMember | null> {
   try {

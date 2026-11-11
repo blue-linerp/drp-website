@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { route } from "@/lib/api";
 import { verifyFivemRequest } from "@/lib/fivem-auth";
 import { priorityFor } from "@/lib/session";
@@ -13,9 +14,12 @@ export const dynamic = "force-dynamic";
  */
 export const GET = route(async (req) => {
   verifyFivemRequest(req);
-  const users = await db.user.findMany({ where: { whitelisted: true, inGuild: true }, include: { supporterTier: true } });
+  const [users, queueRoles] = await Promise.all([
+    db.user.findMany({ where: { whitelisted: true, inGuild: true }, include: { supporterTier: true } }),
+    getQueueRoles(),
+  ]);
   return NextResponse.json({
     generatedAt: Math.floor(Date.now() / 1000),
-    players: users.map((u) => ({ discordId: u.discordId, license: u.fivemLicense, priority: priorityFor(u).total, name: u.globalName || u.username })),
+    players: users.map((u) => ({ discordId: u.discordId, license: u.fivemLicense, priority: priorityFor(u, queueRoles).total, reserved: priorityFor(u, queueRoles).reserved, name: u.globalName || u.username })),
   });
 });

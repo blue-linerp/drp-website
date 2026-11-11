@@ -135,9 +135,11 @@ The container applies pending migrations on start. Put it behind a reverse proxy
    - checks guild membership and whitelist,
    - returns the player's priority.
 3. If the website can't be reached, the resource uses its cached allowlist and ban list. These refresh every 5 minutes and are saved to `cache.json`, so they survive a server restart.
-4. Allowed players join the priority queue. The order is crash grace first, then `priority` descending, then join time. Priority is `0 + supporter tier (25/40/80/120) + STAFF_PRIORITY_BONUS for staff + the manual bonus`.
+4. Allowed players join the priority queue. The order is crash grace first, then `priority` descending, then join time. Priority is `0 + highest queue role + supporter tier (25/40/80/120) + STAFF_PRIORITY_BONUS for staff + the manual bonus`. Only whitelisted players can queue at all; the whitelist role is re-read from Discord at connect if it's more than a minute old.
 5. While they wait, an adaptive card updates every 2 seconds. It shows their position, priority, tier, time waited, player count, and Discord/Website buttons.
-6. Players are let in while `online + still loading < sv_maxclients - ReservedStaffSlots`. Staff can use the reserved slots.
+6. Players are let in while `online + still loading < sv_maxclients - ReservedStaffSlots`. Staff, and queue roles marked "Can use reserved slots", can use the reserved slots.
+
+**Queue roles** (Admin → Queue → Queue roles, needs `queue.manage`): pick a Discord role (the bot lists your server's roles), give it a label and priority points, and optionally let it use reserved slots. A player gets the points of their **highest** queue role only; roles don't stack. Changes apply to new connections right away and to players already queued at the next heartbeat (≤30s). The Play page lists the roles and points publicly.
 7. Players who crash keep their place for 3 minutes, or jump to the front if they crashed while in the city.
 8. Every 30 seconds the resource sends a heartbeat with online players and the queue. The website uses it for queue length, each player's live position on `/queue`, playtime and last seen. The response tells the resource to:
    - kick anyone staff removed from the queue,

@@ -99,7 +99,7 @@ local function cachedDecision(ids)
     end
     for _, p in ipairs(cache.players) do
         if (ids.discord and p.discordId == ids.discord) or (ids.license and p.license == ids.license) then
-            return { allowed = true, priority = p.priority or 0, displayName = p.name, tier = nil, isStaff = false }
+            return { allowed = true, priority = p.priority or 0, displayName = p.name, tier = nil, isStaff = false, reserved = p.reserved == true }
         end
     end
     return nil
@@ -159,7 +159,7 @@ local function renderCard(entry, position, total)
         position = position,
         total = total,
         priority = entry.priority,
-        tier = entry.tier or 'None',
+        tier = (entry.queueRole and entry.tier and (entry.queueRole .. ' · ' .. entry.tier)) or entry.queueRole or entry.tier or 'None',
         elapsed = fmtElapsed(now() - entry.joinedAt),
         players = ('%d / %d'):format(onlineCount(), max),
         note = entry.grace and 'You crashed recently, so your place has been kept.' or 'Keep this window open. You\'ll join automatically when a slot opens.',
@@ -205,7 +205,8 @@ CreateThread(function()
         local i = 1
         while i <= #queue do
             local e = queue[i]
-            local cap = e.isStaff and max or (max - Config.ReservedStaffSlots)
+            -- Staff and queue roles flagged "reserved slots" on the website may use the held-back slots.
+            local cap = (e.isStaff or e.reserved) and max or (max - Config.ReservedStaffSlots)
             if used < cap then
                 table.remove(queue, i)
                 connecting[e.license] = t
@@ -284,6 +285,8 @@ AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
         priority = tonumber(res.priority) or 0,
         tier = res.tier,
         isStaff = res.isStaff == true,
+        reserved = res.reserved == true,
+        queueRole = type(res.queueRole) == 'string' and res.queueRole or nil,
         joinedAt = (existing and existing.joinedAt) or (g and g.joinedAt) or now(),
         grace = (g and g.crashed) or false,
         deferrals = deferrals,
@@ -292,7 +295,7 @@ AddEventHandler('playerConnecting', function(name, setKickReason, deferrals)
     grace[ids.license] = nil
     queue[#queue + 1] = entry
     sortQueue()
-    log(('queued %s prio=%d staff=%s'):format(ids.license, entry.priority, tostring(entry.isStaff)))
+    log(('queued %s prio=%d staff=%s reserved=%s role=%s'):format(ids.license, entry.priority, tostring(entry.isStaff), tostring(entry.reserved), tostring(entry.queueRole)))
 end)
 
 -- Fully joined: free the "connecting" slot.

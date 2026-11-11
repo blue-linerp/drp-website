@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { accessFor, priorityFor, requireStaffPage } from "@/lib/session";
 import { can, LEVEL_LABEL } from "@/lib/permissions";
 import { daysBetween, discordAvatarUrl, formatDate, formatMinutes } from "@/lib/utils";
@@ -25,7 +26,7 @@ export default async function AdminUserPage({ params }: { params: { id: string }
   });
   if (!u) notFound();
   const access = accessFor(u);
-  const prio = priorityFor(u);
+  const prio = priorityFor(u, await getQueueRoles());
   const points = [...u.bans, ...u.warnings].reduce((n, x) => n + x.points, 0);
 
   return (
@@ -132,7 +133,7 @@ export default async function AdminUserPage({ params }: { params: { id: string }
             <h2 className="text-2xl">Queue priority</h2>
             <p className="mt-2 font-display text-5xl font-bold text-white">{prio.total}</p>
             <p className="mt-1 text-sm text-white/50">
-              base {prio.base} · supporter +{prio.supporter} · staff +{prio.staff} · manual {prio.manual >= 0 ? "+" : ""}{prio.manual}
+              base {prio.base} · role {prio.roleLabel ? `${prio.roleLabel} ` : ""}+{prio.role}{prio.reserved ? " (reserved slots)" : ""} · supporter +{prio.supporter} · staff +{prio.staff} · manual {prio.manual >= 0 ? "+" : ""}{prio.manual}
             </p>
           </Card>
           <UserActions

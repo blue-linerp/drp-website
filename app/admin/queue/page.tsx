@@ -8,6 +8,8 @@ import { formatMinutes } from "@/lib/utils";
 import { Card, EmptyState } from "@/components/ui/misc";
 import { AutoRefresh } from "@/components/admin/auto-refresh";
 import { KickButton } from "@/components/admin/kick-button";
+import { QueueRolesManager } from "@/components/admin/queue-roles-manager";
+import { env } from "@/lib/env";
 
 export default async function QueuePage() {
   await requireStaffPage("queue.manage");
@@ -17,6 +19,10 @@ export default async function QueuePage() {
   const licenses = [...queue.map((q) => q.license), ...(snap?.players.map((p) => p.license) ?? [])];
   const users = licenses.length ? await db.user.findMany({ where: { fivemLicense: { in: licenses } }, select: { id: true, username: true, fivemLicense: true, priorityBonus: true } }) : [];
   const byLicense = new Map(users.map((u) => [u.fivemLicense!, u]));
+  const queueRoles = await db.queueRole.findMany({
+    orderBy: [{ priority: "desc" }, { order: "asc" }],
+    select: { id: true, discordRoleId: true, label: true, priority: true, reservedSlot: true, color: true },
+  });
 
   return (
     <div className="space-y-6">
@@ -74,6 +80,8 @@ export default async function QueuePage() {
       <p className="text-sm text-white/45">
         To change someone&apos;s priority, open their user page and set a manual bonus. Changes apply to queued players at the next heartbeat (≤30s).
       </p>
+
+      <QueueRolesManager roles={queueRoles} staffBonus={env.staffPriorityBonus} />
     </div>
   );
 }

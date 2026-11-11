@@ -3,6 +3,7 @@ import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { site } from "@/lib/site";
 import { getPublicSettings } from "@/lib/content";
+import { getQueueRoles } from "@/lib/queue-roles";
 import { ButtonLink } from "@/components/ui/button";
 import { Reveal } from "@/components/ui/reveal";
 import { ServerPanel } from "@/components/queue/server-panel";
@@ -17,6 +18,7 @@ export const revalidate = 3600;
 
 export default async function QueuePage() {
   const { home } = await getPublicSettings();
+  const queueRoles = await getQueueRoles().catch(() => []);
   return (
     <>
       <section className="relative overflow-hidden pb-16 pt-36 md:pb-24 md:pt-44">
@@ -36,6 +38,24 @@ export default async function QueuePage() {
       <div className="container space-y-6">
         <ServerPanel />
         <AccessCard />
+        {queueRoles.length > 0 && (
+          <section aria-labelledby="prio-title" className="plate p-6 md:p-8">
+            <p className="eyebrow">Queue</p>
+            <h2 id="prio-title" className="mt-3 text-3xl">Priority roles.</h2>
+            <p className="mt-2 max-w-2xl text-sm text-white/60">
+              You need the whitelist to queue. These Discord roles move you up the queue. Only your highest role counts, and it&apos;s added to your supporter tier.
+            </p>
+            <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {queueRoles.map((r) => (
+                <li key={r.discordRoleId} className="item flex items-center gap-3 px-4 py-3">
+                  <span className="hex h-3 w-3 shrink-0" style={{ background: r.color }} aria-hidden />
+                  <span className="flex-1 font-semibold text-white">{r.label}</span>
+                  <span className="font-mono text-white">+{r.priority}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
 
       <section aria-labelledby="live-title" className="container py-24">
