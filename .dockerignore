@@ -1,0 +1,9 @@
+node_modules
+.next
+.next-e2e
+.local-db
+.env
+.env.local
+test-results
+playwright-report
+resources

@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING
+  UNDER_REVIEW
+  INTERVIEW
+  ACCEPTED
+  DENIED
+  WITHDRAWN
+}
+
+enum ApplicationCategory {
+  WHITELIST
+  DEPARTMENT
+  STAFF
+  SPECIAL
+}
+
+enum RuleCategory {
+  GENERAL
+  GANGS
+  GOVERNMENT
+  BUSINESSES
+  DISCORD
+}
+
+model User {
+  id               String    @id @default(cuid())
+  discordId        String    @unique
+  username         String
+  globalName       String?
+  avatar           String?
+  discordCreatedAt DateTime
+  guildJoinedAt    DateTime?
+  inGuild          Boolean   @default(false)
+  roleIds          String[]  @default([])
+  rolesSyncedAt    DateTime?
+  email            String?
+  whitelisted      Boolean   @default(false)
+  whitelistedAt    DateTime?
+  priorityBonus    Int       @default(0)
+  supporterTierId  String?
+  supporterUntil   DateTime?
+  tebexTransaction String?
+  fivemLicense     String?   @unique
+  steamHex         String?
+  steamName        String?
+  fivemId          String?   @unique
+  cfxName          String?
+  lastIp          String?
+  lastSeenInGame   DateTime?
+  playtimeMinutes  Int       @default(0)
+  isProfilePublic  Boolean   @default(false)
+  dmNotifications  Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  supporterTier    SupporterTier?     @relation(fields: [supporterTierId], references: [id], onDelete: SetNull)
+  applications     Application[]      @relation("applicant")
+  reviewed         Application[]      @relation("reviewer")
+  drafts           ApplicationDraft[]
+  bans             Ban[]              @relation("banned")
+  bansIssued       Ban[]              @relation("banIssuer")
+  warnings         Warning[]          @relation("warned")
+  warningsIssued   Warning[]          @relation("warnIssuer")
+  auditLogs        AuditLog[]
+  creator          Creator?
+  guideVotes       GuideVote[]
+  gameCharacters   Character[]
+
+  @@index([whitelisted])
+  @@index([lastSeenInGame])
+}
+
+model ApplicationType {
+  id                String              @id @default(cuid())
+  slug              String              @unique
+  title             String
+  category          ApplicationCategory
+  department        String?
+  description       String
+  icon              String              @default("file-text")
+  image             String?
+  isOpen            Boolean             @default(true)
+  opensAt           DateTime?
+  closesAt          DateTime?
+  minAge            Int?
+  minDiscordAgeDays Int                 @default(0)
+  requiredRoleIds   String[]            @default([])
+  requiresWhitelist Boolean             @default(false)
+  grantRoleId       String?
+  grantsWhitelist   Boolean             @default(false)
+  cooldownDays      Int                 @default(14)
+  webhookUrl        String?
+  questions         Json                @default("[]")
+  order             Int                 @default(0)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  applications      Application[]
+  drafts            ApplicationDraft[]
+}
+
+model Application {
+  id             String            @id @default(cuid())
+  reference      String            @unique
+  typeId         String
+  userId         String
+  status         ApplicationStatus @default(PENDING)
+  answers        Json
+  reviewerId     String?
+  claimedAt      DateTime?
+  decisionReason String?
+  internalNotes  Json              @default("[]")
+  history        Json              @default("[]")
+  interviewAt    DateTime?
+  submittedAt    DateTime          @default(now())
+  decidedAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  type           ApplicationType   @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  user           User              @relation("applicant", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer       User?             @relation("reviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, typeId, status])
+  @@index([status, submittedAt])
+}
+
+model ApplicationDraft {
+  id        String          @id @default(cuid())
+  userId    String
+  typeId    String
+  answers   Json
+  step      Int             @default(0)
+  updatedAt DateTime        @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      ApplicationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, typeId])
+}
+
+model Ban {
+  id         String    @id @default(cuid())
+  userId     String
+  reason     String
+  points     Int       @default(0)
+  expiresAt  DateTime?
+  issuedById String?
+  active     Boolean   @default(true)
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation("banned", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy   User?     @relation("banIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, active])
+}
+
+model Warning {
+  id         String   @id @default(cuid())
+  userId     String
+  reason     String
+  points     Int      @default(0)
+  issuedById String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation("warned", fields: [userId], references: [id], onDelete: Cascade)
+  issuedBy   User?    @relation("warnIssuer", fields: [issuedById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model SupporterTier {
+  id             String  @id @default(cuid())
+  name           String  @unique
+  price          Int
+  currency       String  @default("USD")
+  interval       String  @default("mo")
+  priority       Int
+  color          String
+  benefits       String[]
+  tebexPackageId String?
+  tebexUrl       String?
+  discordRoleId  String?
+  order          Int     @default(0)
+
+  users          User[]
+}
+
+model RuleSection {
+  id          String       @id @default(cuid())
+  category    RuleCategory
+  title       String
+  slug        String       @unique
+  pointsLabel String?
+  body        String
+  order       Int          @default(0)
+  updatedAt   DateTime     @updatedAt
+}
+
+model Guide {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  excerpt     String
+  cover       String?
+  category    String
+  body        String
+  readMinutes Int         @default(3)
+  published   Boolean     @default(true)
+  order       Int         @default(0)
+  helpfulYes  Int         @default(0)
+  helpfulNo   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  votes       GuideVote[]
+}
+
+model GuideVote {
+  id      String  @id @default(cuid())
+  guideId String
+  voterId String
+  userId  String?
+  helpful Boolean
+
+  guide   Guide   @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([guideId, voterId])
+}
+
+model FaqItem {
+  id       String @id @default(cuid())
+  category String
+  question String
+  slug     String @unique
+  answer   String
+  order    Int    @default(0)
+}
+
+model Creator {
+  id               String   @id @default(cuid())
+  name             String
+  userId           String?  @unique
+  twitchLogin      String?
+  twitchId         String?
+  youtubeChannelId String?
+  tiktok           String?
+  kick             String?
+  avatar           String?
+  featured         Boolean  @default(false)
+  approved         Boolean  @default(true)
+  characters       String[] @default([])
+  order            Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  user             User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model SiteSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+/// A Qbox/QBCore character, reported by the drp-gate resource from the game's `players` table.
+model Character {
+  id              String    @id @default(cuid())
+  citizenid       String    @unique
+  userId          String
+  firstname       String
+  lastname        String
+  birthdate       String?
+  gender          String?
+  nationality     String?
+  phone           String?
+  jobName         String?
+  jobLabel        String?
+  jobGrade        String?
+  onDuty          Boolean   @default(false)
+  gangName        String?
+  gangLabel       String?
+  gangGrade       String?
+  cash            Int       @default(0)
+  bank            Int       @default(0)
+  /// Minutes played on this character (accrued from drp-gate heartbeats).
+  playtimeMinutes Int       @default(0)
+  /// Last time this character was seen in the city.
+  lastPlayedAt    DateTime?
+  /// When the game last saved this character (players.last_updated).
+  gameUpdatedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

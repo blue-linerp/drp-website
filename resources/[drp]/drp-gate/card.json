@@ -1,0 +1,49 @@
+{
+  "type": "AdaptiveCard",
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "version": "1.3",
+  "body": [
+    {
+      "type": "ColumnSet",
+      "columns": [
+        {
+          "type": "Column",
+          "width": "auto",
+          "items": [{ "type": "Image", "url": "{{logo}}", "size": "Small", "altText": "{{server}}" }]
+        },
+        {
+          "type": "Column",
+          "width": "stretch",
+          "verticalContentAlignment": "Center",
+          "items": [
+            { "type": "TextBlock", "text": "{{server}}", "weight": "Bolder", "size": "Large", "color": "{{c_title}}" },
+            { "type": "TextBlock", "text": "{{subtitle}}", "isSubtle": true, "spacing": "None", "wrap": true }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "You are #{{position}} of {{total}} in queue",
+      "size": "ExtraLarge",
+      "weight": "Bolder",
+      "color": "{{c_position}}",
+      "spacing": "Large",
+      "wrap": true
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Priority", "value": "{{priority}}" },
+        { "title": "Tier", "value": "{{tier}}" },
+        { "title": "Waiting", "value": "{{elapsed}}" },
+        { "title": "Players", "value": "{{players}}" }
+      ]
+    },
+    { "type": "TextBlock", "text": "{{note}}", "isSubtle": true, "wrap": true, "spacing": "Medium", "size": "Small" }
+  ],
+  "actions": [
+    { "type": "Action.OpenUrl", "title": "Discord", "url": "{{discord}}" },
+    { "type": "Action.OpenUrl", "title": "Website", "url": "{{website}}" }
+  ]
+}
