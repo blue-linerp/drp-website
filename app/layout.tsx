@@ -9,8 +9,8 @@ import { MeProvider } from "@/components/use-me";
 import { getPublicSettings } from "@/lib/content";
 
 // ox_lib "Abstract" style: Chakra Petch for everything (headings, body, labels), mono for numbers.
-const chakra = Chakra_Petch({ subsets: ["latin", "latin-ext"], weight: ["300", "400", "500", "600", "700"], style: ["normal", "italic"], variable: "--font-display", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin", "latin-ext"], weight: ["500"], variable: "--font-mono", display: "swap" });
+const chakra = Chakra_Petch({ subsets: ["latin", "latin-ext"], weight: ["300", "400", "500", "600", "700"], style: ["normal", "italic"], variable: "--font-display", display: "swap", preload: false });
+const mono = JetBrains_Mono({ subsets: ["latin", "latin-ext"], weight: ["500"], variable: "--font-mono", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
